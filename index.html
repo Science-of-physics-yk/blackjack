@@ -1,6 +1,6 @@
 from IPython.display import HTML, display
 
-# 決定版：3D斜め楕円チップ＆黒格子模様裏面ブラックジャック
+# 修正完了版：スプリット完全対応・3D斜め楕円チップ・ブラックジャック
 blackjack_html = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -45,7 +45,7 @@ blackjack_html = """
         box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
     }
     
-    /* 🃏 カードの共通裏面スタイル (黒ベースの格子模様＋右下赤K) */
+    /* 🃏 カードの共通裏面スタイル */
     .card-back-design {
         background: linear-gradient(135deg, #111111 25%, transparent 25%) -10px 0,
                     linear-gradient(225deg, #111111 25%, transparent 25%) -10px 0,
@@ -76,14 +76,15 @@ blackjack_html = """
         align-items: center;
     }
     #dealer-hand-zone { top: 40px; }
-    #player-hand-zone { bottom: 40px; }
+    #player-hand-zone { bottom: 30px; }
     .hand-label {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: bold;
         background: rgba(0,0,0,0.4);
         padding: 5px 10px;
         border-radius: 5px;
-        min-width: 120px;
+        min-width: 130px;
+        text-align: center;
     }
     .cards-wrapper {
         display: flex;
@@ -107,12 +108,12 @@ blackjack_html = """
         box-sizing: border-box;
         font-size: 20px;
         font-weight: bold;
-        transition: all 0.6s ease-out;
+        transition: all 0.5s ease-out;
         transform-origin: center;
     }
     .card.red { color: #dc2626; }
     
-    /* 🪙 斜めから見た立体楕円チップシステム */
+    /* 🪙 立体楕円チップ */
     .chip-container {
         position: absolute;
         display: flex;
@@ -120,7 +121,7 @@ blackjack_html = """
         align-items: flex-end;
         height: 130px;
         width: 160px;
-        perspective: 500px; /* 3D効果の奥行き */
+        perspective: 500px;
     }
     #chips-dealer { right: 150px; top: 25px; }
     #chips-bet { right: 150px; top: 205px; }
@@ -136,11 +137,8 @@ blackjack_html = """
         width: 36px;
         height: 36px;
         border-radius: 50%;
-        /* X軸を60度傾けることで、正面の円を斜め上の「楕円」に変形 */
         transform: rotateX(60deg); 
-        /* 重なりのピクセル数を微調整 */
         margin-top: -31px; 
-        /* 複数のシャドウを重ねて、チップ側面の厚みと影を表現 */
         box-shadow: 
             0 1px 0 #333,
             0 2px 0 #222,
@@ -151,7 +149,6 @@ blackjack_html = """
         box-sizing: border-box;
         position: relative;
     }
-    /* 内側のデザイン用の円線 */
     .chip::before {
         content: '';
         position: absolute;
@@ -159,9 +156,9 @@ blackjack_html = """
         border: 1px solid rgba(255,255,255,0.35);
         border-radius: 50%;
     }
-    .chip.blue { background-color: #1d4ed8; }  /* 100pt */
-    .chip.red-c { background-color: #b91c1c; } /* 50pt */
-    .chip.green { background-color: #047857; } /* 10pt */
+    .chip.blue { background-color: #1d4ed8; }  
+    .chip.red-c { background-color: #b91c1c; } 
+    .chip.green { background-color: #047857; } 
 
     /* コントロールパネル */
     #info-bar {
@@ -194,20 +191,19 @@ blackjack_html = """
     
     #msg-overlay {
         position: absolute;
-        top: 220px;
-        left: 150px;
-        width: 350px;
+        top: 210px;
+        left: 140px;
+        width: 370px;
         text-align: center;
-        font-size: 24px;
+        font-size: 22px;
         font-weight: bold;
-        background: rgba(0,0,0,0.85);
+        background: rgba(0,0,0,0.9);
         padding: 15px;
         border-radius: 10px;
         display: none;
         z-index: 10;
         box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
-    /* ベット画面 & ゲームオーバー画面 */
     .modal-overlay {
         position: absolute;
         top: 0; left: 0; width: 100%; height: 100%;
@@ -264,13 +260,13 @@ blackjack_html = """
     <div id="msg-overlay"></div>
 
     <div class="hand-container" id="player-hand-zone">
-        <div id="player-hands-wrapper" style="display:flex; flex-direction:column; gap:20px;">
+        <div id="player-hands-wrapper" style="display:flex; flex-direction:column; gap:15px;">
             <div style="display:flex; align-items:center; gap:15px;">
                 <div class="hand-label" id="player-label-0">プレイヤー: 0</div>
                 <div class="cards-wrapper" id="player-cards-0"></div>
             </div>
             <div id="split-hand-row" style="display:none; align-items:center; gap:15px;">
-                <div class="hand-label" id="player-label-1">プレイヤー(手札2): 0</div>
+                <div class="hand-label" id="player-label-1">手札2: 0</div>
                 <div class="cards-wrapper" id="player-cards-1"></div>
             </div>
         </div>
@@ -326,17 +322,14 @@ let dealerHoleCardHidden = true;
 const suits = ['♠', '♥', '♦', '♣'];
 const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
 
-// 🪙 3D傾斜つきの楕円チップを描画
 function renderChips(containerId, amount) {
     const container = document.getElementById(containerId);
     container.innerHTML = '';
-
     let rem = amount;
     let blues = Math.floor(rem / 100); rem %= 100;
     let reds = Math.floor(rem / 50); rem %= 50;
     let greens = Math.floor(rem / 10);
 
-    // 青チップ(100)
     if(blues > 0) {
         let stack = document.createElement('div');
         stack.className = 'chip-stack';
@@ -347,7 +340,6 @@ function renderChips(containerId, amount) {
         }
         container.appendChild(stack);
     }
-    // 赤チップ(50)
     if(reds > 0) {
         let stack = document.createElement('div');
         stack.className = 'chip-stack';
@@ -358,7 +350,6 @@ function renderChips(containerId, amount) {
         }
         container.appendChild(stack);
     }
-    // 緑チップ(10)
     if(greens > 0) {
         let stack = document.createElement('div');
         stack.className = 'chip-stack';
@@ -381,16 +372,11 @@ function showBetWindow() {
         showGameOverWindow();
         return;
     }
-
     let maxBet = Math.min(250, totalPoints);
     let slider = document.getElementById('bet-slider');
     slider.max = maxBet;
-    
-    if (parseInt(slider.value) > maxBet) {
-        slider.value = maxBet;
-    }
+    if (parseInt(slider.value) > maxBet) slider.value = maxBet;
     slider.min = 50; 
-    
     updateSliderDisplay(slider.value);
 
     document.getElementById('modal-points').innerText = totalPoints;
@@ -417,14 +403,12 @@ function resetEntireGame() {
     currentBet = 0;
     updateInfo();
     document.getElementById('gameover-overlay').style.display = 'none';
-    
     document.getElementById('dealer-cards').innerHTML = '';
     document.getElementById('player-cards-0').innerHTML = '';
     document.getElementById('player-cards-1').innerHTML = '';
     document.getElementById('split-hand-row').style.display = 'none';
     document.getElementById('dealer-label').innerText = "ディーラー: 0";
     document.getElementById('player-label-0').innerText = "プレイヤー: 0";
-    
     showBetWindow();
 }
 
@@ -447,19 +431,16 @@ function createDeck() {
 
 function startGame() {
     let betInput = parseInt(document.getElementById('bet-slider').value);
-
     if (betInput > totalPoints) {
         alert('所持ポイントが足りません。');
         return;
     }
-
     currentBet = betInput;
     totalPoints -= currentBet;
     updateInfo();
 
     renderChips('chips-player', totalPoints);
     renderChips('chips-bet', currentBet);
-
     document.getElementById('bet-overlay').style.display = 'none';
     
     deck = createDeck();
@@ -474,15 +455,15 @@ function startGame() {
     document.getElementById('player-cards-0').innerHTML = '';
     document.getElementById('player-cards-1').innerHTML = '';
     document.getElementById('split-hand-row').style.display = 'none';
+    document.getElementById('player-label-0').style.color = "white";
+    document.getElementById('player-label-1').style.color = "white";
 
     setTimeout(() => drawCard('player', 0), 0);
     setTimeout(() => drawCard('dealer', 0, false), 200);
     setTimeout(() => drawCard('player', 0), 400);
     setTimeout(() => drawCard('dealer', 0, true), 600);
 
-    setTimeout(() => {
-        checkInitialState();
-    }, 1200);
+    setTimeout(() => { checkInitialState(); }, 1200);
 }
 
 function drawCard(target, handIdx = 0, isHole = false) {
@@ -517,7 +498,7 @@ function drawCard(target, handIdx = 0, isHole = false) {
     targetZone.appendChild(cardEl);
 
     setTimeout(() => {
-        cardEl.style.left = `${currentCardsCount * 30}px`;
+        cardEl.style.left = `${currentCardsCount * 25}px`;
         cardEl.style.top = '0px';
     }, 50);
 
@@ -527,7 +508,9 @@ function drawCard(target, handIdx = 0, isHole = false) {
 function updateScores() {
     for (let i = 0; i < hands.player.length; i++) {
         playerScores[i] = calculateScore(hands.player[i]);
-        document.getElementById(`player-label-${i}`).innerText = `プレイヤー: ${playerScores[i]}`;
+        let labelText = i === 0 ? "手札1: " : "手札2: ";
+        if (!isSplit) labelText = "プレイヤー: ";
+        document.getElementById(`player-label-${i}`).innerText = `${labelText}${playerScores[i]}`;
     }
     let visibleDealerCards = hands.dealer.filter(c => !c.hidden).map(c => c.card);
     dealerScore = calculateScore(visibleDealerCards);
@@ -583,18 +566,24 @@ function hit() {
         if (playerScores[activeHandIndex] > 21) {
             if (isSplit && activeHandIndex === 0) {
                 activeHandIndex = 1;
-                showMessage("手札1 バスト!<br>手札2のターン");
+                document.getElementById('player-label-0').style.color = "#aaa";
+                document.getElementById('player-label-1').style.color = "#f59e0b";
+                showMessage("手札1 バスト！<br>手札2のターン");
+                setTimeout(() => { document.getElementById('msg-overlay').style.display = 'none'; }, 1200);
             } else {
                 endPlayerTurn();
             }
         }
-    }, 650);
+    }, 550);
 }
 
 function stand() {
     if (isSplit && activeHandIndex === 0) {
         activeHandIndex = 1;
+        document.getElementById('player-label-0').style.color = "#aaa";
+        document.getElementById('player-label-1').style.color = "#f59e0b";
         showMessage("手札2のターン");
+        setTimeout(() => { document.getElementById('msg-overlay').style.display = 'none'; }, 1000);
     } else {
         endPlayerTurn();
     }
@@ -604,7 +593,6 @@ function doubleDown() {
     totalPoints -= currentBet;
     currentBet *= 2;
     updateInfo();
-    
     renderChips('chips-player', totalPoints);
     renderChips('chips-bet', currentBet);
 
@@ -615,24 +603,34 @@ function doubleDown() {
 function split() {
     isSplit = true;
     document.getElementById('btn-split').disabled = true;
+    document.getElementById('btn-double').disabled = true;
     document.getElementById('split-hand-row').style.display = 'flex';
     
     totalPoints -= currentBet;
     updateInfo();
     renderChips('chips-player', totalPoints);
 
+    // 手札1の2枚目を手札2に移動
     let cardToMove = hands.player[0].pop();
     hands.player.push([cardToMove]);
+    playerScores.push(0); 
 
+    // 表示をクリアして再配置
     document.getElementById('player-cards-0').innerHTML = '';
     document.getElementById('player-cards-1').innerHTML = '';
 
     reDrawSplitHand(0, hands.player[0][0]);
     reDrawSplitHand(1, hands.player[1][0]);
 
+    // それぞれに2枚目を即時自動ドロー
     setTimeout(() => drawCard('player', 0), 200);
     setTimeout(() => drawCard('player', 1), 400);
-    setTimeout(() => { updateScores(); }, 1000);
+    
+    // 現在の操作ターゲット（手札1）を強調表示
+    setTimeout(() => { 
+        updateScores(); 
+        document.getElementById('player-label-0').style.color = "#f59e0b";
+    }, 700);
 }
 
 function reDrawSplitHand(handIdx, card) {
@@ -665,6 +663,8 @@ function disableActionButtons() {
 
 function endPlayerTurn() {
     disableActionButtons();
+    document.getElementById('player-label-0').style.color = "white";
+    document.getElementById('player-label-1').style.color = "white";
     
     hands.dealer[1].hidden = false;
     dealerHoleCardHidden = false;
@@ -707,6 +707,7 @@ function resolveGame() {
     let dScore = calculateScore(hands.dealer.map(c => c.card));
     let msg = "";
     
+    // スプリット時は「手札ごと」にベット額の判定を行います
     for (let i = 0; i < playerScores.length; i++) {
         let pScore = playerScores[i];
         let handLabel = isSplit ? `手札${i+1}: ` : "";
@@ -739,9 +740,7 @@ function resolveGame() {
     renderChips('chips-bet', 0); 
     
     if (totalPoints < 50) {
-        setTimeout(() => {
-            showGameOverWindow();
-        }, 1500);
+        setTimeout(() => { showGameOverWindow(); }, 1500);
     } else {
         document.getElementById('btn-next').style.display = 'block';
     }
@@ -753,7 +752,6 @@ function showMessage(text) {
     el.style.display = 'block';
 }
 
-// 初期起動
 showBetWindow();
 </script>
 </body>
