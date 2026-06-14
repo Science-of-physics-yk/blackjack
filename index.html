@@ -1,0 +1,764 @@
+from IPython.display import HTML, display
+
+# 決定版：3D斜め楕円チップ＆黒格子模様裏面ブラックジャック
+blackjack_html = """
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<style>
+    body {
+        background-color: #1c5c3a;
+        color: white;
+        font-family: 'Helvetica Neue', Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 0;
+        padding: 20px;
+        user-select: none;
+    }
+    #game-container {
+        position: relative;
+        width: 800px;
+        height: 550px;
+        background-color: #247346;
+        border: 8px solid #1a5231;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        overflow: hidden;
+    }
+    /* 山札エリア */
+    #deck-area {
+        position: absolute;
+        right: 40px;
+        top: 220px;
+        width: 80px;
+        height: 110px;
+    }
+    .deck-card {
+        position: absolute;
+        width: 80px;
+        height: 110px;
+        border: 2px solid #444;
+        border-radius: 8px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+    }
+    
+    /* 🃏 カードの共通裏面スタイル (黒ベースの格子模様＋右下赤K) */
+    .card-back-design {
+        background: linear-gradient(135deg, #111111 25%, transparent 25%) -10px 0,
+                    linear-gradient(225deg, #111111 25%, transparent 25%) -10px 0,
+                    linear-gradient(45deg, #111111 25%, transparent 25%),
+                    linear-gradient(315deg, #111111 25%, #222222 25%);
+        background-size: 10px 10px;
+        box-sizing: border-box;
+        border: 2px solid #555;
+    }
+    .card-back-design::after {
+        content: "K";
+        position: absolute;
+        bottom: 5px;
+        right: 8px;
+        color: #dc2626;
+        font-size: 14px;
+        font-weight: bold;
+        font-family: 'Georgia', serif;
+    }
+    
+    /* 手札エリア */
+    .hand-container {
+        position: absolute;
+        left: 50px;
+        width: 550px;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+    }
+    #dealer-hand-zone { top: 40px; }
+    #player-hand-zone { bottom: 40px; }
+    .hand-label {
+        font-size: 16px;
+        font-weight: bold;
+        background: rgba(0,0,0,0.4);
+        padding: 5px 10px;
+        border-radius: 5px;
+        min-width: 120px;
+    }
+    .cards-wrapper {
+        display: flex;
+        position: relative;
+        height: 110px;
+        min-width: 300px;
+    }
+    /* カードのスタイル */
+    .card {
+        position: absolute;
+        width: 80px;
+        height: 110px;
+        background-color: white;
+        color: black;
+        border-radius: 8px;
+        box-shadow: 3px 3px 8px rgba(0,0,0,0.4);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: 6px;
+        box-sizing: border-box;
+        font-size: 20px;
+        font-weight: bold;
+        transition: all 0.6s ease-out;
+        transform-origin: center;
+    }
+    .card.red { color: #dc2626; }
+    
+    /* 🪙 斜めから見た立体楕円チップシステム */
+    .chip-container {
+        position: absolute;
+        display: flex;
+        gap: 16px;
+        align-items: flex-end;
+        height: 130px;
+        width: 160px;
+        perspective: 500px; /* 3D効果の奥行き */
+    }
+    #chips-dealer { right: 150px; top: 25px; }
+    #chips-bet { right: 150px; top: 205px; }
+    #chips-player { right: 150px; bottom: 25px; }
+
+    .chip-stack {
+        display: flex;
+        flex-direction: column-reverse;
+        align-items: center;
+        width: 36px;
+    }
+    .chip {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        /* X軸を60度傾けることで、正面の円を斜め上の「楕円」に変形 */
+        transform: rotateX(60deg); 
+        /* 重なりのピクセル数を微調整 */
+        margin-top: -31px; 
+        /* 複数のシャドウを重ねて、チップ側面の厚みと影を表現 */
+        box-shadow: 
+            0 1px 0 #333,
+            0 2px 0 #222,
+            0 3px 0 #111,
+            0 4px 6px rgba(0,0,0,0.6),
+            inset 0 2px 2px rgba(255,255,255,0.4);
+        border: 2px dashed rgba(255,255,255,0.7);
+        box-sizing: border-box;
+        position: relative;
+    }
+    /* 内側のデザイン用の円線 */
+    .chip::before {
+        content: '';
+        position: absolute;
+        top: 4px; left: 4px; right: 4px; bottom: 4px;
+        border: 1px solid rgba(255,255,255,0.35);
+        border-radius: 50%;
+    }
+    .chip.blue { background-color: #1d4ed8; }  /* 100pt */
+    .chip.red-c { background-color: #b91c1c; } /* 50pt */
+    .chip.green { background-color: #047857; } /* 10pt */
+
+    /* コントロールパネル */
+    #info-bar {
+        width: 800px;
+        display: flex;
+        justify-content: space-between;
+        margin-top: 15px;
+        font-size: 18px;
+        font-weight: bold;
+    }
+    #control-panel {
+        margin-top: 15px;
+        display: flex;
+        gap: 10px;
+        height: 40px;
+    }
+    button {
+        padding: 0 20px;
+        font-size: 16px;
+        font-weight: bold;
+        color: white;
+        background-color: #1e40af;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    button:hover:not(:disabled) { background-color: #1d4ed8; }
+    button:disabled { background-color: #4b5563; cursor: not-allowed; opacity: 0.5; }
+    
+    #msg-overlay {
+        position: absolute;
+        top: 220px;
+        left: 150px;
+        width: 350px;
+        text-align: center;
+        font-size: 24px;
+        font-weight: bold;
+        background: rgba(0,0,0,0.85);
+        padding: 15px;
+        border-radius: 10px;
+        display: none;
+        z-index: 10;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+    }
+    /* ベット画面 & ゲームオーバー画面 */
+    .modal-overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.9);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 20;
+    }
+    .slider-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin: 20px;
+        gap: 10px;
+    }
+    .slider-container input {
+        width: 300px;
+        cursor: pointer;
+    }
+    #bet-val-display {
+        font-size: 32px;
+        font-weight: bold;
+        color: #f59e0b;
+    }
+    .gameover-title {
+        font-size: 48px;
+        color: #dc2626;
+        font-weight: bold;
+        margin-bottom: 20px;
+        text-shadow: 0 0 10px rgba(220,38,38,0.5);
+    }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="deck-area">
+        <div class="deck-card card-back-design" style="top:0px; left:0px;"></div>
+        <div class="deck-card card-back-design" style="top:-2px; left:-2px;"></div>
+        <div class="deck-card card-back-design" style="top:-4px; left:-4px;"></div>
+    </div>
+
+    <div class="chip-container" id="chips-dealer"></div>
+    <div class="chip-container" id="chips-bet"></div>
+    <div class="chip-container" id="chips-player"></div>
+
+    <div class="hand-container" id="dealer-hand-zone">
+        <div class="hand-label" id="dealer-label">ディーラー: 0</div>
+        <div class="cards-wrapper" id="dealer-cards"></div>
+    </div>
+
+    <div id="msg-overlay"></div>
+
+    <div class="hand-container" id="player-hand-zone">
+        <div id="player-hands-wrapper" style="display:flex; flex-direction:column; gap:20px;">
+            <div style="display:flex; align-items:center; gap:15px;">
+                <div class="hand-label" id="player-label-0">プレイヤー: 0</div>
+                <div class="cards-wrapper" id="player-cards-0"></div>
+            </div>
+            <div id="split-hand-row" style="display:none; align-items:center; gap:15px;">
+                <div class="hand-label" id="player-label-1">プレイヤー(手札2): 0</div>
+                <div class="cards-wrapper" id="player-cards-1"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="bet-overlay" class="modal-overlay">
+        <h2>ポイント設定</h2>
+        <p>現在の所持ポイント: <span id="modal-points">1000</span></p>
+        <div class="slider-container">
+            <div>ベット額: <span id="bet-val-display">150</span> pt</div>
+            <input type="range" id="bet-slider" min="50" max="250" step="10" value="150" oninput="updateSliderDisplay(this.value)">
+            <div style="width: 300px; display: flex; justify-content: space-between; font-size: 14px; color: #aaa;">
+                <span>Min: 50</span>
+                <span>Max: 250</span>
+            </div>
+        </div>
+        <button onclick="startGame()" style="background-color: #10b981; padding: 10px 30px; font-size: 18px;">ゲーム開始</button>
+    </div>
+
+    <div id="gameover-overlay" class="modal-overlay" style="display:none;">
+        <div class="gameover-title">GAME OVER</div>
+        <p style="font-size: 18px; margin-bottom: 30px;">所持ポイントがなくなりました。</p>
+        <button onclick="resetEntireGame()" style="background-color: #dc2626; padding: 12px 30px; font-size: 18px;">リセットして最初から (1000pt)</button>
+    </div>
+</div>
+
+<div id="info-bar">
+    <div>所持ポイント: <span id="current-points">1000</span></div>
+    <div>現在のベット: <span id="current-bet">0</span> <span id="insurance-bet"></span></div>
+</div>
+
+<div id="control-panel">
+    <button id="btn-hit" onclick="hit()" disabled>ヒット</button>
+    <button id="btn-stand" onclick="stand()" disabled>スタンド</button>
+    <button id="btn-double" onclick="doubleDown()" disabled>ダブルダウン</button>
+    <button id="btn-split" onclick="split()" disabled>スプリット</button>
+    <button id="btn-insurance" onclick="insurance()" disabled>インシュアランス</button>
+    <button id="btn-next" onclick="showBetWindow()" style="display:none; background-color:#10b981;">次ゲームへ</button>
+</div>
+
+<script>
+let totalPoints = 1000;
+let currentBet = 0;
+let insuranceBet = 0;
+let deck = [];
+let hands = { dealer: [], player: [[]] };
+let dealerScore = 0;
+let playerScores = [0];
+let activeHandIndex = 0;
+let isSplit = false;
+let dealerHoleCardHidden = true;
+
+const suits = ['♠', '♥', '♦', '♣'];
+const values = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+
+// 🪙 3D傾斜つきの楕円チップを描画
+function renderChips(containerId, amount) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+
+    let rem = amount;
+    let blues = Math.floor(rem / 100); rem %= 100;
+    let reds = Math.floor(rem / 50); rem %= 50;
+    let greens = Math.floor(rem / 10);
+
+    // 青チップ(100)
+    if(blues > 0) {
+        let stack = document.createElement('div');
+        stack.className = 'chip-stack';
+        for(let i=0; i<Math.min(blues, 12); i++) {
+            let chip = document.createElement('div');
+            chip.className = 'chip blue';
+            stack.appendChild(chip);
+        }
+        container.appendChild(stack);
+    }
+    // 赤チップ(50)
+    if(reds > 0) {
+        let stack = document.createElement('div');
+        stack.className = 'chip-stack';
+        for(let i=0; i<reds; i++) {
+            let chip = document.createElement('div');
+            chip.className = 'chip red-c';
+            stack.appendChild(chip);
+        }
+        container.appendChild(stack);
+    }
+    // 緑チップ(10)
+    if(greens > 0) {
+        let stack = document.createElement('div');
+        stack.className = 'chip-stack';
+        for(let i=0; i<greens; i++) {
+            let chip = document.createElement('div');
+            chip.className = 'chip green';
+            stack.appendChild(chip);
+        }
+        container.appendChild(stack);
+    }
+}
+
+function updateSliderDisplay(val) {
+    document.getElementById('bet-val-display').innerText = val;
+    renderChips('chips-bet', parseInt(val));
+}
+
+function showBetWindow() {
+    if (totalPoints < 50) {
+        showGameOverWindow();
+        return;
+    }
+
+    let maxBet = Math.min(250, totalPoints);
+    let slider = document.getElementById('bet-slider');
+    slider.max = maxBet;
+    
+    if (parseInt(slider.value) > maxBet) {
+        slider.value = maxBet;
+    }
+    slider.min = 50; 
+    
+    updateSliderDisplay(slider.value);
+
+    document.getElementById('modal-points').innerText = totalPoints;
+    document.getElementById('bet-overlay').style.display = 'flex';
+    document.getElementById('btn-next').style.display = 'none';
+    document.getElementById('msg-overlay').style.display = 'none';
+    document.getElementById('insurance-bet').innerText = "";
+    insuranceBet = 0;
+
+    renderChips('chips-player', totalPoints);
+    renderChips('chips-dealer', 800); 
+}
+
+function showGameOverWindow() {
+    document.getElementById('gameover-overlay').style.display = 'flex';
+    document.getElementById('btn-next').style.display = 'none';
+    disableActionButtons();
+    renderChips('chips-player', 0);
+    renderChips('chips-bet', 0);
+}
+
+function resetEntireGame() {
+    totalPoints = 1000;
+    currentBet = 0;
+    updateInfo();
+    document.getElementById('gameover-overlay').style.display = 'none';
+    
+    document.getElementById('dealer-cards').innerHTML = '';
+    document.getElementById('player-cards-0').innerHTML = '';
+    document.getElementById('player-cards-1').innerHTML = '';
+    document.getElementById('split-hand-row').style.display = 'none';
+    document.getElementById('dealer-label').innerText = "ディーラー: 0";
+    document.getElementById('player-label-0').innerText = "プレイヤー: 0";
+    
+    showBetWindow();
+}
+
+function createDeck() {
+    let newDeck = [];
+    for (let s of suits) {
+        for (let v of values) {
+            let score = parseInt(v);
+            if (['J', 'Q', 'K'].includes(v)) score = 10;
+            if (v === 'A') score = 11;
+            newDeck.push({ suit: s, value: v, score: score, isRed: (s==='♥'||s==='♦') });
+        }
+    }
+    for (let i = newDeck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newDeck[i], newDeck[j]] = [newDeck[j], newDeck[i]];
+    }
+    return newDeck;
+}
+
+function startGame() {
+    let betInput = parseInt(document.getElementById('bet-slider').value);
+
+    if (betInput > totalPoints) {
+        alert('所持ポイントが足りません。');
+        return;
+    }
+
+    currentBet = betInput;
+    totalPoints -= currentBet;
+    updateInfo();
+
+    renderChips('chips-player', totalPoints);
+    renderChips('chips-bet', currentBet);
+
+    document.getElementById('bet-overlay').style.display = 'none';
+    
+    deck = createDeck();
+    hands.dealer = [];
+    hands.player = [[]];
+    playerScores = [0];
+    activeHandIndex = 0;
+    isSplit = false;
+    dealerHoleCardHidden = true;
+
+    document.getElementById('dealer-cards').innerHTML = '';
+    document.getElementById('player-cards-0').innerHTML = '';
+    document.getElementById('player-cards-1').innerHTML = '';
+    document.getElementById('split-hand-row').style.display = 'none';
+
+    setTimeout(() => drawCard('player', 0), 0);
+    setTimeout(() => drawCard('dealer', 0, false), 200);
+    setTimeout(() => drawCard('player', 0), 400);
+    setTimeout(() => drawCard('dealer', 0, true), 600);
+
+    setTimeout(() => {
+        checkInitialState();
+    }, 1200);
+}
+
+function drawCard(target, handIdx = 0, isHole = false) {
+    if (deck.length === 0) deck = createDeck();
+    let card = deck.pop();
+    
+    if (target === 'dealer') {
+        hands.dealer.push({card: card, hidden: isHole});
+    } else {
+        hands.player[handIdx].push(card);
+    }
+
+    let cardEl = document.createElement('div');
+    cardEl.className = `card ${(card.isRed && !isHole) ? 'red' : ''} ${isHole ? 'back card-back-design' : ''}`;
+    if (!isHole) {
+        cardEl.innerHTML = `<div>${card.value}</div><div style='align-self:center; font-size:32px;'>${card.suit}</div><div style='align-self:flex-end; transform:rotate(180deg);'>${card.value}</div>`;
+    }
+
+    let deckArea = document.getElementById('deck-area');
+    let targetZone = target === 'dealer' ? document.getElementById('dealer-cards') : document.getElementById(`player-cards-${handIdx}`);
+    let currentCardsCount = targetZone.children.length;
+    
+    let rectDeck = deckArea.getBoundingClientRect();
+    let rectZone = targetZone.getBoundingClientRect();
+    let startX = rectDeck.left - rectZone.left;
+    let startY = rectDeck.top - rectZone.top;
+    
+    cardEl.style.position = 'absolute';
+    cardEl.style.left = `${startX}px`;
+    cardEl.style.top = `${startY}px`;
+    
+    targetZone.appendChild(cardEl);
+
+    setTimeout(() => {
+        cardEl.style.left = `${currentCardsCount * 30}px`;
+        cardEl.style.top = '0px';
+    }, 50);
+
+    updateScores();
+}
+
+function updateScores() {
+    for (let i = 0; i < hands.player.length; i++) {
+        playerScores[i] = calculateScore(hands.player[i]);
+        document.getElementById(`player-label-${i}`).innerText = `プレイヤー: ${playerScores[i]}`;
+    }
+    let visibleDealerCards = hands.dealer.filter(c => !c.hidden).map(c => c.card);
+    dealerScore = calculateScore(visibleDealerCards);
+    document.getElementById('dealer-label').innerText = `ディーラー: ${dealerScore}${dealerHoleCardHidden ? ' + ?' : ''}`;
+}
+
+function calculateScore(cardArray) {
+    let score = 0;
+    let aces = 0;
+    for (let c of cardArray) {
+        score += c.score;
+        if (c.value === 'A') aces++;
+    }
+    while (score > 21 && aces > 0) {
+        score -= 10;
+        aces--;
+    }
+    return score;
+}
+
+function updateInfo() {
+    document.getElementById('current-points').innerText = totalPoints;
+    document.getElementById('current-bet').innerText = currentBet;
+}
+
+function checkInitialState() {
+    updateScores();
+    if (hands.dealer[0].card.value === 'A' && totalPoints >= Math.floor(currentBet / 2)) {
+        document.getElementById('btn-insurance').disabled = false;
+    }
+    if (hands.player[0].length === 2 && hands.player[0][0].value === hands.player[0][1].value && totalPoints >= currentBet) {
+        document.getElementById('btn-split').disabled = false;
+    }
+    if (totalPoints >= currentBet) {
+        document.getElementById('btn-double').disabled = false;
+    }
+    document.getElementById('btn-hit').disabled = false;
+    document.getElementById('btn-stand').disabled = false;
+
+    if (playerScores[0] === 21) {
+        endPlayerTurn();
+    }
+}
+
+function hit() {
+    document.getElementById('btn-double').disabled = true;
+    document.getElementById('btn-split').disabled = true;
+    document.getElementById('btn-insurance').disabled = true;
+
+    drawCard('player', activeHandIndex);
+
+    setTimeout(() => {
+        if (playerScores[activeHandIndex] > 21) {
+            if (isSplit && activeHandIndex === 0) {
+                activeHandIndex = 1;
+                showMessage("手札1 バスト!<br>手札2のターン");
+            } else {
+                endPlayerTurn();
+            }
+        }
+    }, 650);
+}
+
+function stand() {
+    if (isSplit && activeHandIndex === 0) {
+        activeHandIndex = 1;
+        showMessage("手札2のターン");
+    } else {
+        endPlayerTurn();
+    }
+}
+
+function doubleDown() {
+    totalPoints -= currentBet;
+    currentBet *= 2;
+    updateInfo();
+    
+    renderChips('chips-player', totalPoints);
+    renderChips('chips-bet', currentBet);
+
+    drawCard('player', activeHandIndex);
+    setTimeout(() => { endPlayerTurn(); }, 650);
+}
+
+function split() {
+    isSplit = true;
+    document.getElementById('btn-split').disabled = true;
+    document.getElementById('split-hand-row').style.display = 'flex';
+    
+    totalPoints -= currentBet;
+    updateInfo();
+    renderChips('chips-player', totalPoints);
+
+    let cardToMove = hands.player[0].pop();
+    hands.player.push([cardToMove]);
+
+    document.getElementById('player-cards-0').innerHTML = '';
+    document.getElementById('player-cards-1').innerHTML = '';
+
+    reDrawSplitHand(0, hands.player[0][0]);
+    reDrawSplitHand(1, hands.player[1][0]);
+
+    setTimeout(() => drawCard('player', 0), 200);
+    setTimeout(() => drawCard('player', 1), 400);
+    setTimeout(() => { updateScores(); }, 1000);
+}
+
+function reDrawSplitHand(handIdx, card) {
+    let targetZone = document.getElementById(`player-cards-${handIdx}`);
+    let cardEl = document.createElement('div');
+    cardEl.className = `card ${card.isRed ? 'red' : ''}`;
+    cardEl.innerHTML = `<div>${card.value}</div><div style='align-self:center; font-size:32px;'>${card.suit}</div><div style='align-self:flex-end; transform:rotate(180deg);'>${card.value}</div>`;
+    cardEl.style.position = 'absolute';
+    cardEl.style.left = '0px';
+    cardEl.style.top = '0px';
+    targetZone.appendChild(cardEl);
+}
+
+function insurance() {
+    insuranceBet = Math.floor(currentBet / 2);
+    totalPoints -= insuranceBet;
+    document.getElementById('insurance-bet').innerText = `(保険: ${insuranceBet})`;
+    updateInfo();
+    renderChips('chips-player', totalPoints);
+    document.getElementById('btn-insurance').disabled = true;
+}
+
+function disableActionButtons() {
+    document.getElementById('btn-hit').disabled = true;
+    document.getElementById('btn-stand').disabled = true;
+    document.getElementById('btn-double').disabled = true;
+    document.getElementById('btn-split').disabled = true;
+    document.getElementById('btn-insurance').disabled = true;
+}
+
+function endPlayerTurn() {
+    disableActionButtons();
+    
+    hands.dealer[1].hidden = false;
+    dealerHoleCardHidden = false;
+    
+    let dealerCardsZone = document.getElementById('dealer-cards');
+    let holeCardEl = dealerCardsZone.children[1];
+    let hCard = hands.dealer[1].card;
+    
+    holeCardEl.classList.remove('back', 'card-back-design');
+    if (hCard.isRed) holeCardEl.classList.add('red');
+    holeCardEl.innerHTML = `<div>${hCard.value}</div><div style='align-self:center; font-size:32px;'>${hCard.suit}</div><div style='align-self:flex-end; transform:rotate(180deg);'>${hCard.value}</div>`;
+    
+    updateScores();
+
+    let dealerHasBJ = (calculateScore(hands.dealer.map(c => c.card)) === 21 && hands.dealer.length === 2);
+    if (insuranceBet > 0 && dealerHasBJ) {
+        totalPoints += insuranceBet * 3;
+        showMessage("インシュアランス成功！");
+    }
+
+    let allBusted = playerScores.every(score => score > 21);
+    if (allBusted) {
+        resolveGame();
+    } else {
+        dealerAI();
+    }
+}
+
+function dealerAI() {
+    let dScore = calculateScore(hands.dealer.map(c => c.card));
+    if (dScore < 17) {
+        drawCard('dealer', 0, false);
+        setTimeout(() => { dealerAI(); }, 650);
+    } else {
+        resolveGame();
+    }
+}
+
+function resolveGame() {
+    let dScore = calculateScore(hands.dealer.map(c => c.card));
+    let msg = "";
+    
+    for (let i = 0; i < playerScores.length; i++) {
+        let pScore = playerScores[i];
+        let handLabel = isSplit ? `手札${i+1}: ` : "";
+
+        if (pScore > 21) {
+            msg += handLabel + "バスト (負け)<br>";
+        } else if (dScore > 21) {
+            msg += handLabel + "ディーラーバスト (勝ち!)<br>";
+            totalPoints += currentBet * 2; 
+        } else if (pScore > dScore) {
+            if (!isSplit && pScore === 21 && hands.player[0].length === 2) {
+                msg += "ブラックジャック！ (1.5倍勝利)<br>";
+                totalPoints += Math.floor(currentBet * 2.5);
+            } else {
+                msg += handLabel + "勝ち!<br>";
+                totalPoints += currentBet * 2;
+            }
+        } else if (pScore < dScore) {
+            msg += handLabel + "負け<br>";
+        } else {
+            msg += handLabel + "プッシュ(引き分け)<br>";
+            totalPoints += currentBet;
+        }
+    }
+
+    updateInfo();
+    showMessage(msg);
+
+    renderChips('chips-player', totalPoints);
+    renderChips('chips-bet', 0); 
+    
+    if (totalPoints < 50) {
+        setTimeout(() => {
+            showGameOverWindow();
+        }, 1500);
+    } else {
+        document.getElementById('btn-next').style.display = 'block';
+    }
+}
+
+function showMessage(text) {
+    let el = document.getElementById('msg-overlay');
+    el.innerHTML = text;
+    el.style.display = 'block';
+}
+
+// 初期起動
+showBetWindow();
+</script>
+</body>
+</html>
+"""
+
+# HTMLをColab上に表示
+display(HTML(blackjack_html))
