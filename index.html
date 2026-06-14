@@ -1,6 +1,5 @@
 from IPython.display import HTML, display
 
-# 修正完了版：スプリット完全対応・3D斜め楕円チップ・ブラックジャック
 blackjack_html = """
 <!DOCTYPE html>
 <html lang="ja">
@@ -541,9 +540,12 @@ function checkInitialState() {
     if (hands.dealer[0].card.value === 'A' && totalPoints >= Math.floor(currentBet / 2)) {
         document.getElementById('btn-insurance').disabled = false;
     }
-    if (hands.player[0].length === 2 && hands.player[0][0].value === hands.player[0][1].value && totalPoints >= currentBet) {
+    
+    // 【💡 修正箇所】文字の一致ではなく「カード個々のベーススコア」が10点同士（または同じ値）ならスプリット可
+    if (hands.player[0].length === 2 && hands.player[0][0].score === hands.player[0][1].score && totalPoints >= currentBet) {
         document.getElementById('btn-split').disabled = false;
     }
+    
     if (totalPoints >= currentBet) {
         document.getElementById('btn-double').disabled = false;
     }
@@ -610,23 +612,19 @@ function split() {
     updateInfo();
     renderChips('chips-player', totalPoints);
 
-    // 手札1の2枚目を手札2に移動
     let cardToMove = hands.player[0].pop();
     hands.player.push([cardToMove]);
     playerScores.push(0); 
 
-    // 表示をクリアして再配置
     document.getElementById('player-cards-0').innerHTML = '';
     document.getElementById('player-cards-1').innerHTML = '';
 
     reDrawSplitHand(0, hands.player[0][0]);
     reDrawSplitHand(1, hands.player[1][0]);
 
-    // それぞれに2枚目を即時自動ドロー
     setTimeout(() => drawCard('player', 0), 200);
     setTimeout(() => drawCard('player', 1), 400);
     
-    // 現在の操作ターゲット（手札1）を強調表示
     setTimeout(() => { 
         updateScores(); 
         document.getElementById('player-label-0').style.color = "#f59e0b";
@@ -707,7 +705,6 @@ function resolveGame() {
     let dScore = calculateScore(hands.dealer.map(c => c.card));
     let msg = "";
     
-    // スプリット時は「手札ごと」にベット額の判定を行います
     for (let i = 0; i < playerScores.length; i++) {
         let pScore = playerScores[i];
         let handLabel = isSplit ? `手札${i+1}: ` : "";
